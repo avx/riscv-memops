@@ -113,17 +113,17 @@ int memmove_test()
 {
     int i,j,l = 0;
 
+    init();
     for (l = 0; l < 23; l++) {
-        for (j = 1; j < 134; j++) {
-            for (i = 0; i < 671; i++) {
-                printf("memmove test... l=%d j=%d, i=%d\n", l, j, i);
+        for (j = 0; j < 98; j++) {
+            printf("memmove test... offs=%d |dst-src|=%d, lens = 0..65\n", l, j);
+            for (i = 0; i < 66; i++) {
 
-                init();
                 memmove(&a[l+0], &a[l+j], i);
                 _memmove(&b[l+0], &b[l+j], i);
                 eq(__LINE__, i, j);
 
-                init();
+//                init();
                 memmove(&a[l+j], &a[l+0], i);
                 _memmove(&b[l+j], &b[l+0], i);
                 eq(__LINE__, i, j);

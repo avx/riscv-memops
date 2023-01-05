@@ -13,10 +13,10 @@ char mem1[1024*64] __attribute__((aligned(8)));
 unsigned long c_start(unsigned long a0, unsigned a1)
 {
     asm volatile("nop");
-    _memset(mem1, 0xa5, 16);
+    _memcpy(&mem1[0], &mem0[0], 4096);
     asm volatile("nop");
-    _memmove(&mem1[2], &mem1[0], 14);
+//    _memmove(&mem1[2], &mem1[0], 14);
     asm volatile("nop");
-    _memcpy(&mem1[0], &mem1[2048], 1024);
+//    _memcpy(&mem1[0], &mem1[2048], 1024);
     asm volatile("nop");
 }

@@ -30,14 +30,17 @@ u32: memops.S tests/umain.c
 
 qu64:
 	qemu-riscv64 ./u64
+
 qu32:
 	qemu-riscv32 ./u32
+
 spike64:
-	spike --isa=RV64IMAFDC -l ./m64
+	spike --isa=RV64IMAFDC -d ./m64
+
 spike32:
-	spike --isa=RV32IMAFDC -l ./m32
+	spike --isa=RV32IMAFDC -d ./m32
 
 clean:
-	rm -rf u64 u32 m64 m32
+	rm -rf u64 u32 m64 m32 *.log
 
 .PHONY: clean qu64 qu32 spike64 spike32
