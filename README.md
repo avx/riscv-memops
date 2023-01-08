@@ -1,13 +1,15 @@
-# riscv memcpy, memset, memmove functions
+# risc-v memcpy, memset, memmove functions
 
 Optimized memcpy, memset, memmove functions written in RISC-V assembler.
 Everyone wants to reduce the size of the code, so in order to comply with
 the compressed ISA specification, here preferably s0-s1, a0-a5 registers
 are used.
 
+Minimal supported risc-v ISA: rv32e
+
 ## code size
 
-rv64imafdc: memset: 148 bytes, memcpy: 192 bytes, memmove: 368 bytes
+rv64gc: memset: 148 bytes, memcpy: 192 bytes, memmove: 368 bytes
 
 ## performance
 

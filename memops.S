@@ -44,7 +44,7 @@
 # error unsupported __riscv_xlen
 #endif
 
-.section .text
+.section .text, "ax", @progbits
     # we want to reduce the size of the code, so in order
     # to comply with the compressed ISA specification,
     # we will use preferably s0-s1, a0-a5 registers.
@@ -54,6 +54,7 @@
 
 #ifdef HAVE_RISCV_MEMCPY
 .globl _memcpy
+.type _memcpy, @function
     #
     # void *_memcpy(void *dst, void *src, size_t sz)
     #
@@ -62,7 +63,7 @@
     # For mutual misaligned buffers does byte-by-byte coping.
 _memcpy:
     # save initial dst value
-    mv t6, a0
+    mv t2, a0
 
     # threshold for byte-by-byte copying
     li a5, BOPS_THRESHOLD
@@ -90,11 +91,13 @@ _memcpy:
 .Lmemcpy_main:
     # according to convention
     # s0, s1 must be stored by callee
-    mv t5, s0
-    mv t4, s1
+    mv t0, s0
+    mv t1, s1
 
+#ifndef __riscv_abi_rve
     li a7, 16*SZREG
     mv a3, a7
+#endif
     j 6f
 1:  REG_L a4, 8*SZREG(a1)
     REG_L a5, 9*SZREG(a1)
@@ -131,8 +134,14 @@ _memcpy:
     add a0, a0, a3
     add a1, a1, a3
     sub a2, a2, a3
+#ifndef __riscv_abi_rve
 6:  bgeu a2, a7, 1b
     srli a3, a7, 1
+#else
+6:  li a3, 16*SZREG
+    bgeu a2, a3, 1b
+    srli a3, a3, 1
+#endif
     bgeu a2, a3, 2b
     srli a3, a3, 1
     bgeu a2, a3, 3b
@@ -142,8 +151,8 @@ _memcpy:
     bgeu a2, a3, 5b
 
     # restore s0, s1
-    mv s1, t4
-    mv s0, t5
+    mv s1, t1
+    mv s0, t0
 
 .Lmemcpy_bops:
     # byte-by-byte coping
@@ -156,12 +165,13 @@ _memcpy:
     bltu a0, a3, 0b
 
     # return initial dst
-1:  mv a0, t6
+1:  mv a0, t2
     ret
 #endif /* HAVE_RISCV_MEMCPY */
 
 #ifdef HAVE_RISCV_MEMSET
 .globl _memset
+.type _memset, @function
     #
     # void *_memset(void *dst, int ch, size_t sz)
     #
@@ -170,7 +180,7 @@ _memcpy:
     # Uses stores operations of XLEN (register) size.
 _memset:
     # save return value
-    mv t6, a0
+    mv t2, a0
 
     # threshold for byte-by-byte stores
     li a5, BOPS_THRESHOLD
@@ -241,21 +251,22 @@ _memset:
     bltu a0, a3, 0b
 
     # return initial a0
-1:  mv a0, t6
+1:  mv a0, t2
     ret
 #endif /* HAVE_RISCV_MEMSET */
 
 #ifdef HAVE_RISCV_MEMMOVE
 .globl _memmove
+.type _memmove, @function
     #
     # void *_memmove(void *dst, void *src, size_t sz)
     #
     # Function copies sz bytes from memory area src to memory area dst.
     # The memory areas may overlap. Copies using 8/4/2/1 bytes load/stores
 _memmove:
-    # save a0, s1, s0
-    mv t6, a0
-    mv t4, s1
+    # save a0, s1
+    mv t2, a0
+    mv t1, s1
 
     # quit if src equal dst
     beq a0, a1, .Lmemmove_end
@@ -299,8 +310,8 @@ _memmove:
 
 .Lmemmove_end:
     # restore saved registers
-    mv a0, t6
-    mv s1, t4
+    mv s1, t1
+    mv a0, t2
     ret
 
 .Lmemmove_main:
@@ -320,8 +331,9 @@ _memmove:
     bltu a0, a5, 0b
 
     # calculate last address and tail misaligned bytes
-1:  div a4, a2, s1
-    mul a4, a4, s1
+1:  addi a5, s1, -1
+    xori a5, a5, -1
+    and a4, a2, a5
     sub a2, a2, a4
     add a4, a0, a4
 
@@ -407,8 +419,9 @@ _memmove:
     bgtu a0, a5, 0b
 
     # calculate last address and tail misaligned bytes
-1:  div a4, a2, s1
-    mul a4, a4, s1
+1:  addi a5, s1, -1
+    xori a5, a5, -1
+    and a4, a2, a5
     sub a2, a2, a4
     sub a4, a0, a4
 
