@@ -167,6 +167,7 @@ _memcpy:
     # return initial dst
 1:  mv a0, t2
     ret
+    .size _memcpy, . - _memcpy
 #endif /* HAVE_RISCV_MEMCPY */
 
 #ifdef HAVE_RISCV_MEMSET
@@ -253,6 +254,7 @@ _memset:
     # return initial a0
 1:  mv a0, t2
     ret
+    .size _memset, . - _memset
 #endif /* HAVE_RISCV_MEMSET */
 
 #ifdef HAVE_RISCV_MEMMOVE
@@ -281,20 +283,22 @@ _memmove:
     bltu a2, s1, .Lmemmove_1b
 
     # find out mutual buffer alignment
+    mv a3, a0
+    mv a4, a1
 #if __riscv_xlen == 64
     li s1, 8
-    and a3, a0, 7
-    and a4, a1, 7
+    and a3, a3, 7
+    and a4, a4, 7
     beq a3, a4, .Lmemmove_main
 #endif
     li s1, 4
-    and a3, a0, 3
-    and a4, a1, 3
+    and a3, a3, 3
+    and a4, a4, 3
     beq a3, a4, .Lmemmove_main
 #ifdef USE_HALF_WORD_OPS
     li s1, 2
-    and a3, a0, 1
-    and a4, a1, 1
+    and a3, a3, 1
+    and a4, a4, 1
     beq a3, a4, .Lmemmove_main
 #endif
 
@@ -356,8 +360,8 @@ _memmove:
     add a1, a1, s1
     add a0, a0, s1
     bltu a0, a4, 0b
-    j .Lmemmove_1b
 #ifdef USE_HALF_WORD_OPS
+    j .Lmemmove_1b
 1:  li a5, 2
     bne s1, a5, 1f
 0:  lh a3, 0(a1)
@@ -376,20 +380,22 @@ _memmove:
     # s1 = threshold for byte-by-byte copying
     bltu a2, s1, .Lmemmove_r1b
 
+    mv a3, a0
+    mv a4, a1
 #if __riscv_xlen == 64
     li s1, 8
-    and a3, a0, 7
-    and a4, a1, 7
+    and a3, a3, 7
+    and a4, a4, 7
     beq a3, a4, .Lmemmove_rmain
 #endif
     li s1, 4
-    and a3, a0, 3
-    and a4, a1, 3
+    and a3, a3, 3
+    and a4, a4, 3
     beq a3, a4, .Lmemmove_rmain
 #ifdef USE_HALF_WORD_OPS
     li s1, 2
-    and a3, a0, 1
-    and a4, a1, 1
+    and a3, a3, 1
+    and a4, a4, 1
     beq a3, a4, .Lmemmove_rmain
 #endif
 
@@ -444,8 +450,8 @@ _memmove:
     lw a3, 0(a1)
     sw a3, 0(a0)
     bltu a4, a0, 0b
-    j .Lmemmove_r1b
 #ifdef USE_HALF_WORD_OPS
+    j .Lmemmove_r1b
 1:  li a5, 2
     bne s1, a5, 1f
 0:  sub a1, a1, s1
@@ -455,5 +461,5 @@ _memmove:
     bltu a4, a0, 0b
 #endif
 1:  j .Lmemmove_r1b
-
+    .size _memmove, . - _memmove
 #endif /* HAVE_RISCV_MEMMOVE */
