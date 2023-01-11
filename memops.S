@@ -26,7 +26,7 @@
 #define HAVE_RISCV_MEMCPY
 #define HAVE_RISCV_MEMSET
 #define HAVE_RISCV_MEMMOVE
-#define USE_HALF_WORD_OPS
+//#define HAVE_RISCV_MEMMOVE_HALF_WORDS
 
 //#define _memcpy memcpy
 //#define _memset memset
@@ -49,9 +49,6 @@
     # to comply with the compressed ISA specification,
     # we will use preferably s0-s1, a0-a5 registers.
 
-    # byte load/store operations only if size less than threshold
-    .equ BOPS_THRESHOLD, 2*SZREG
-
 #ifdef HAVE_RISCV_MEMCPY
 .globl _memcpy
 .type _memcpy, @function
@@ -66,7 +63,7 @@ _memcpy:
     mv t2, a0
 
     # threshold for byte-by-byte copying
-    li a5, BOPS_THRESHOLD
+    li a5, 2 * SZREG
     bltu a2, a5, .Lmemcpy_bops
 
     # the src and dst buffers must have the same
@@ -99,12 +96,12 @@ _memcpy:
     mv a3, a7
 #endif
     j 6f
-1:  REG_L a4, 8*SZREG(a1)
-    REG_L a5, 9*SZREG(a1)
+1:  REG_L a4,  8*SZREG(a1)
+    REG_L a5,  9*SZREG(a1)
     REG_L s0, 10*SZREG(a1)
     REG_L s1, 11*SZREG(a1)
-    REG_S a4, 8*SZREG(a0)
-    REG_S a5, 9*SZREG(a0)
+    REG_S a4,  8*SZREG(a0)
+    REG_S a5,  9*SZREG(a0)
     REG_S s0, 10*SZREG(a0)
     REG_S s1, 11*SZREG(a0)
     REG_L a4, 12*SZREG(a1)
@@ -115,22 +112,22 @@ _memcpy:
     REG_S a5, 13*SZREG(a0)
     REG_S s0, 14*SZREG(a0)
     REG_S s1, 15*SZREG(a0)
-2:  REG_L a4, 4*SZREG(a1)
-    REG_L a5, 5*SZREG(a1)
-    REG_L s0, 6*SZREG(a1)
-    REG_L s1, 7*SZREG(a1)
-    REG_S a4, 4*SZREG(a0)
-    REG_S a5, 5*SZREG(a0)
-    REG_S s0, 6*SZREG(a0)
-    REG_S s1, 7*SZREG(a0)
-3:  REG_L a4, 2*SZREG(a1)
-    REG_L a5, 3*SZREG(a1)
-    REG_S a4, 2*SZREG(a0)
-    REG_S a5, 3*SZREG(a0)
-4:  REG_L s0, 1*SZREG(a1)
-    REG_S s0, 1*SZREG(a0)
-5:  REG_L s1, 0*SZREG(a1)
-    REG_S s1, 0*SZREG(a0)
+2:  REG_L a4,  4*SZREG(a1)
+    REG_L a5,  5*SZREG(a1)
+    REG_L s0,  6*SZREG(a1)
+    REG_L s1,  7*SZREG(a1)
+    REG_S a4,  4*SZREG(a0)
+    REG_S a5,  5*SZREG(a0)
+    REG_S s0,  6*SZREG(a0)
+    REG_S s1,  7*SZREG(a0)
+3:  REG_L a4,  2*SZREG(a1)
+    REG_L a5,  3*SZREG(a1)
+    REG_S a4,  2*SZREG(a0)
+    REG_S a5,  3*SZREG(a0)
+4:  REG_L s0,  1*SZREG(a1)
+    REG_S s0,  1*SZREG(a0)
+5:  REG_L s1,  0*SZREG(a1)
+    REG_S s1,  0*SZREG(a0)
     add a0, a0, a3
     add a1, a1, a3
     sub a2, a2, a3
@@ -183,11 +180,30 @@ _memset:
     # save return value
     mv t2, a0
 
+    # quit if sz is zero
+    beqz a2, 9f
+
     # threshold for byte-by-byte stores
-    li a5, BOPS_THRESHOLD
+    li a5, 2 * SZREG
     bltu a2, a5, .Lmemset_bops
 
+    # is dst aligned to register size
+    andi a4, a0, SZREG-1
+    beqz a4, .Lmemset_main
+
+    # handle head misalignment
+    li a5, SZREG
+    sub a4, a5, a4
+    add a3, a0, a4
+    sub a2, a2, a4
+0:  sb a1, 0(a0)
+    addi a0, a0, 1
+    blt a0, a3, 0b
+
+.Lmemset_main:
     # propagate set value to whole register
+    beqz a1, 1f
+    zext.b a1, a1
     slli a5, a1, 8
     or a1, a1, a5
     slli a5, a1, 16
@@ -197,44 +213,49 @@ _memset:
     or a1, a1, a5
 #endif
 
-    # is dst aligned to register size
-    and a4, a0, SZREG-1
-    beqz a4, .Lmemset_main
-
-    # handle head misalignment
-    li a5, SZREG
-    sub a4, a5, a4
-    add a3, a0, a4
-0:  sb a1, 0(a0)
-    addi a0, a0, 1
-    blt a0, a3, 0b
-    sub a2, a2, a4
-
-    # stores 16/8/4/2/1*SZREG at one cycle iteration
-.Lmemset_main:
-    li a5, 16*SZREG
+    # stores 32/16/8/4/2/1*SZREG at one cycle iteration
+1:  li a5, 32*SZREG
     mv a3, a5
     j 6f
-1:  REG_S a1, 8*SZREG(a0)
-    REG_S a1, 9*SZREG(a0)
+0:  REG_S a1, 16*SZREG(a0)
+    REG_S a1, 17*SZREG(a0)
+    REG_S a1, 18*SZREG(a0)
+    REG_S a1, 19*SZREG(a0)
+    REG_S a1, 20*SZREG(a0)
+    REG_S a1, 21*SZREG(a0)
+    REG_S a1, 22*SZREG(a0)
+    REG_S a1, 23*SZREG(a0)
+    REG_S a1, 24*SZREG(a0)
+    REG_S a1, 25*SZREG(a0)
+    REG_S a1, 26*SZREG(a0)
+    REG_S a1, 27*SZREG(a0)
+    REG_S a1, 28*SZREG(a0)
+    REG_S a1, 29*SZREG(a0)
+    REG_S a1, 30*SZREG(a0)
+    REG_S a1, 31*SZREG(a0)
+1:  REG_S a1,  8*SZREG(a0)
+    REG_S a1,  9*SZREG(a0)
     REG_S a1, 10*SZREG(a0)
     REG_S a1, 11*SZREG(a0)
     REG_S a1, 12*SZREG(a0)
     REG_S a1, 13*SZREG(a0)
     REG_S a1, 14*SZREG(a0)
     REG_S a1, 15*SZREG(a0)
-2:  REG_S a1, 4*SZREG(a0)
-    REG_S a1, 5*SZREG(a0)
-    REG_S a1, 6*SZREG(a0)
-    REG_S a1, 7*SZREG(a0)
-3:  REG_S a1, 2*SZREG(a0)
-    REG_S a1, 3*SZREG(a0)
-4:  REG_S a1, 1*SZREG(a0)
-5:  REG_S a1, 0*SZREG(a0)
+2:  REG_S a1,  4*SZREG(a0)
+    REG_S a1,  5*SZREG(a0)
+    REG_S a1,  6*SZREG(a0)
+    REG_S a1,  7*SZREG(a0)
+3:  REG_S a1,  2*SZREG(a0)
+    REG_S a1,  3*SZREG(a0)
+4:  REG_S a1,  1*SZREG(a0)
+5:  REG_S a1,  0*SZREG(a0)
     add a0, a0, a3
     sub a2, a2, a3
-6:  bgeu a2, a5, 1b
+6:  bgeu a2, a5, 0b
+    beqz a2, 9f
     srli a3, a5, 1
+    bgeu a2, a3, 1b
+    srli a3, a3, 1
     bgeu a2, a3, 2b
     srli a3, a3, 1
     bgeu a2, a3, 3b
@@ -245,14 +266,13 @@ _memset:
 
     # handle tail misalignment
 .Lmemset_bops:
-    beqz a2, 1f
     add a3, a0, a2
 0:  sb a1, 0(a0)
     addi a0, a0, 1
     bltu a0, a3, 0b
 
     # return initial a0
-1:  mv a0, t2
+9:  mv a0, t2
     ret
     .size _memset, . - _memset
 #endif /* HAVE_RISCV_MEMSET */
@@ -274,7 +294,7 @@ _memmove:
     beq a0, a1, .Lmemmove_end
 
     # threshold for byte operations
-    li s1, BOPS_THRESHOLD
+    li s1, 2 * SZREG
 
     # copy from the end if dst > src
     bltu a1, a0, .Lmemmove_r
@@ -295,7 +315,7 @@ _memmove:
     and a3, a3, 3
     and a4, a4, 3
     beq a3, a4, .Lmemmove_main
-#ifdef USE_HALF_WORD_OPS
+#ifdef HAVE_RISCV_MEMMOVE_HALF_WORDS
     li s1, 2
     and a3, a3, 1
     and a4, a4, 1
@@ -360,7 +380,7 @@ _memmove:
     add a1, a1, s1
     add a0, a0, s1
     bltu a0, a4, 0b
-#ifdef USE_HALF_WORD_OPS
+#ifdef HAVE_RISCV_MEMMOVE_HALF_WORDS
     j .Lmemmove_1b
 1:  li a5, 2
     bne s1, a5, 1f
@@ -392,7 +412,7 @@ _memmove:
     and a3, a3, 3
     and a4, a4, 3
     beq a3, a4, .Lmemmove_rmain
-#ifdef USE_HALF_WORD_OPS
+#ifdef HAVE_RISCV_MEMMOVE_HALF_WORDS
     li s1, 2
     and a3, a3, 1
     and a4, a4, 1
@@ -450,7 +470,7 @@ _memmove:
     lw a3, 0(a1)
     sw a3, 0(a0)
     bltu a4, a0, 0b
-#ifdef USE_HALF_WORD_OPS
+#ifdef HAVE_RISCV_MEMMOVE_HALF_WORDS
     j .Lmemmove_r1b
 1:  li a5, 2
     bne s1, a5, 1f

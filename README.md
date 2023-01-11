@@ -9,11 +9,11 @@ Minimal supported risc-v ISA: rv32e
 
 ## code size
 
-rv64gc: memset: 148 bytes, memcpy: 192 bytes, memmove: 360 bytes
+rv64gc: memset: 194 bytes, memcpy: 192 bytes, memmove: 292 bytes (360 with lh/sh)
 
 ## performance
 
 - rv64: memcpy(page1, page2, 4096) => 1178 instructions; 3.477 bytes per ins. (tends to 3.66)
-- rv64: memset(page, 0, 4096) => 634 instructions; 6.46 bytes per ins. (tends to 6.73)
+- rv64: memset(page, 0, 4096) => 574 instructions; 7.13 bytes per ins. (tends to 7.31)
 - memmove: 5 instructions per load/store LEN where LEN is depend on the mutual alignment of src/dst.
 
