@@ -26,7 +26,7 @@
 #define HAVE_RISCV_MEMCPY
 #define HAVE_RISCV_MEMSET
 #define HAVE_RISCV_MEMMOVE
-#define HAVE_RISCV_MEMMOVE_HALF_WORDS
+//#define HAVE_RISCV_MEMMOVE_HALF_WORDS
 
 //#define _memcpy memcpy
 //#define _memset memset
@@ -68,8 +68,8 @@ _memcpy:
 
     # the src and dst buffers must have the same
     # alignment for load/store operations
-    and a3, a0, SZREG-1
-    and a4, a1, SZREG-1
+    andi a3, a0, SZREG-1
+    andi a4, a1, SZREG-1
     bne a3, a4, .Lmemcpy_bops
     beqz a3, .Lmemcpy_main
 
@@ -83,7 +83,7 @@ _memcpy:
     addi a0, a0, 1
     blt a0, a3, 0b
 
-    # copy 16/8/4/2/1*SZREG at one cycle iteration
+    # copy 16/8/4/2/1*SZREG per one cycle iteration
 .Lmemcpy_main:
     # according to convention
     # s0, s1 must be stored by callee
@@ -93,8 +93,10 @@ _memcpy:
 #ifndef __riscv_abi_rve
     li a7, 16*SZREG
     mv a3, a7
-#endif
+    bltu a2, a7, 7f
+#else
     j 6f
+#endif
 1:  REG_L a4,  8*SZREG(a1)
     REG_L a5,  9*SZREG(a1)
     REG_L s0, 10*SZREG(a1)
@@ -132,11 +134,11 @@ _memcpy:
     sub a2, a2, a3
 #ifndef __riscv_abi_rve
 6:  bgeu a2, a7, 1b
-    srli a3, a7, 1
+7:  srli a3, a7, 1
 #else
 6:  li a3, 16*SZREG
     bgeu a2, a3, 1b
-    srli a3, a3, 1
+7:  srli a3, a3, 1
 #endif
     bgeu a2, a3, 2b
     srli a3, a3, 1
@@ -150,8 +152,9 @@ _memcpy:
     mv s1, t1
     mv s0, t0
 
+    # handle tail misalignment
+    # byte-by-byte copying
 .Lmemcpy_bops:
-    # byte-by-byte coping
     beqz a2, 1f
     add a2, a2, a0
 0:  lb a4, 0(a1)
@@ -160,7 +163,7 @@ _memcpy:
     addi a0, a0, 1
     bltu a0, a2, 0b
 
-    # return initial dst
+    # return initial a0
 1:  mv a0, t2
     ret
     .size _memcpy, . - _memcpy
@@ -179,10 +182,10 @@ _memset:
     # quit if sz is zero
     beqz a2, 9f
 
-    # will return a0 untouched
+    # will return a0 untouched, further a5 = dst
     mv a5, a0
 
-    # threshold for byte-by-byte stores
+    # threshold for byte-by-byte operations
     li a3, 2 * SZREG
     bltu a2, a3, .Lmemset_bops
 
@@ -199,25 +202,25 @@ _memset:
     blt a5, a3, 0b
 
 .Lmemset_main:
-    li a4, 32*SZREG
-    mv a3, a4
-    beqz a1, 6f
+    # zero set byte
+    beqz a1, 1f
 
     # propagate set value to whole register
-    mv t0, s0
     zext.b a1, a1
-    slli s0, a1, 8
-    or a1, a1, s0
-    slli s0, a1, 16
-    or a1, a1, s0
+    slli a3, a1, 8
+    or a1, a1, a3
+    slli a3, a1, 16
+    or a1, a1, a3
 #if __riscv_xlen == 64
-    slli s0, a1, 32
-    or a1, a1, s0
+    slli a3, a1, 32
+    or a1, a1, a3
 #endif
-    mv s0, t0
-    j 6f
 
-    # stores 32/16/8/4/2/1*SZREG at one cycle iteration
+1:  li a4, 32*SZREG
+    mv a3, a4
+    bltu a2, a4, 7f
+
+    # stores 32/16/8/4/2/1*SZREG per one cycle iteration
 0:  REG_S a1, 16*SZREG(a5)
     REG_S a1, 17*SZREG(a5)
     REG_S a1, 18*SZREG(a5)
@@ -254,7 +257,7 @@ _memset:
     sub a2, a2, a3
 6:  bgeu a2, a4, 0b
     beqz a2, 9f
-    srli a3, a4, 1
+7:  srli a3, a4, 1
     bgeu a2, a3, 1b
     srli a3, a3, 1
     bgeu a2, a3, 2b
@@ -287,10 +290,9 @@ _memmove:
     # save a0, s1
     mv t2, a0
     mv t1, s1
-    mv t0, s0
 
     # threshold for byte operations
-    li s0, 2 * SZREG
+    li a5, 2 * SZREG
 
     # find out mutual buffer alignment
 #if __riscv_xlen == 64
@@ -312,18 +314,21 @@ _memmove:
     li s1, 2
     beq a3, a4, 1f
 #endif
-    mv s1, zero
-1:
+    li s1, 0
+
     # copy from the end if dst > src
-    bltu a1, a0, .Lmemmove_r
+1:  bltu a1, a0, .Lmemmove_r
 
     # byte copy if sz is less than threshold
-    bltu a2, s0, .Lmemmove_1b
+    bltu a2, a5, .Lmemmove_1b
+
+    # byte copy if src and dst are mutual unaligned
     beqz s1, .Lmemmove_1b
 
     # at this point:
     # s1 = 8/4/2
     # a4 = head misaligned bytes
+
     beqz a4, 1f
 
     # handle head misalignment by byte copying
@@ -336,7 +341,7 @@ _memmove:
     addi a0, a0, 1
     bltu a0, a4, 0b
 
-    # calculate last address and tail misaligned bytes
+    # calculate last address and tail misaligned bytes number
 1:  addi a4, s1, -1
     xori a4, a4, -1
     and a4, a2, a4
@@ -372,8 +377,8 @@ _memmove:
     add a0, a0, s1
     bltu a0, a4, 0b
 #endif
-    # byte copy
 
+    # byte copy
 .Lmemmove_1b:
 1:  beqz a2, .Lmemmove_end
     add a2, a2, a0
@@ -385,7 +390,6 @@ _memmove:
 
 .Lmemmove_end:
     # restore saved registers
-    mv s0, t0
     mv s1, t1
     mv a0, t2
     ret
@@ -395,13 +399,20 @@ _memmove:
     add a0, a0, a2
     add a1, a1, a2
 
-    # s1 = threshold for byte-by-byte copying
-    bltu a2, s0, .Lmemmove_r1b
+    # here: a5 = threshold for byte-by-byte copying
+    bltu a2, a5, .Lmemmove_r1b
+
+    # byte copy if src and dst are mutual unaligned
+    beqz s1, .Lmemmove_r1b
+
+    # fix head misaligned bytes
+    add a4, a4, a2
+    addi a3, s1, -1
+    and a4, a4, a3
 
     # s1 = 8/4/2
     # a4 = head misaligned bytes
     beqz a4, 1f
-    beqz s1, .Lmemmove_r1b
 
     # handle head misalignment
     sub a2, a2, a4
@@ -412,7 +423,7 @@ _memmove:
     sb a3, 0(a0)
     bgtu a0, a5, 0b
 
-    # calculate last address and tail misaligned bytes
+    # calculate last address and tail misaligned bytes number
 1:  addi a4, s1, -1
     xori a4, a4, -1
     and a4, a2, a4
@@ -448,10 +459,10 @@ _memmove:
     sh a3, 0(a0)
     bltu a4, a0, 0b
 #endif
-1:
+
     # byte copy
 .Lmemmove_r1b:
-    beqz a2, .Lmemmove_end
+1:  beqz a2, .Lmemmove_end
     sub a5, a0, a2
 0:  addi a1, a1, -1
     addi a0, a0, -1
@@ -459,7 +470,5 @@ _memmove:
     sb a3, 0(a0)
     bgtu a0, a5, 0b
     j .Lmemmove_end
-
-.Lmemmove_rmain:
     .size _memmove, . - _memmove
 #endif /* HAVE_RISCV_MEMMOVE */
